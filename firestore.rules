@@ -1,0 +1,114 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ====================================
+    // Helper Functions
+    // ====================================
+
+    // Check if user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Get user document
+    function getUserData() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data;
+    }
+
+    // Check if user belongs to a garage
+    function belongsToGarage(garageId) {
+      return isAuthenticated() && getUserData().garageId == garageId;
+    }
+
+    // Check if user is garage owner
+    function isGarageOwner(garageId) {
+      return isAuthenticated()
+        && getUserData().garageId == garageId
+        && getUserData().role == 'garage_owner';
+    }
+
+    // Check if user is super admin
+    function isSuperAdmin() {
+      return isAuthenticated() && getUserData().role == 'super_admin';
+    }
+
+    // ====================================
+    // Users Collection
+    // ====================================
+    match /users/{userId} {
+      // Users can read their own profile
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      // Users can create their own profile during signup
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      // Users can update their own profile
+      allow update: if isAuthenticated() && request.auth.uid == userId;
+      // Only super admin can delete users
+      allow delete: if isSuperAdmin();
+    }
+
+    // ====================================
+    // Garages Collection
+    // ====================================
+    match /garages/{garageId} {
+      // Members of the garage can read garage info
+      allow read: if belongsToGarage(garageId) || isSuperAdmin();
+      // Only garage owners can create garages
+      allow create: if isAuthenticated();
+      // Only garage owner can update garage settings
+      allow update: if isGarageOwner(garageId) || isSuperAdmin();
+      // Only super admin can delete garages
+      allow delete: if isSuperAdmin();
+
+      // ====================================
+      // Customers Subcollection
+      // ====================================
+      match /customers/{customerId} {
+        allow read: if belongsToGarage(garageId);
+        allow create: if belongsToGarage(garageId);
+        allow update: if belongsToGarage(garageId);
+        allow delete: if isGarageOwner(garageId);
+      }
+
+      // ====================================
+      // Services Subcollection
+      // ====================================
+      match /services/{serviceId} {
+        allow read: if belongsToGarage(garageId);
+        allow create: if belongsToGarage(garageId);
+        allow update: if belongsToGarage(garageId);
+        allow delete: if isGarageOwner(garageId);
+      }
+
+      // ====================================
+      // Invoices Subcollection
+      // ====================================
+      match /invoices/{invoiceId} {
+        allow read: if belongsToGarage(garageId);
+        allow create: if belongsToGarage(garageId);
+        allow update: if isGarageOwner(garageId);
+        allow delete: if isGarageOwner(garageId);
+      }
+
+      // ====================================
+      // Reminders Subcollection
+      // ====================================
+      match /reminders/{reminderId} {
+        allow read: if belongsToGarage(garageId);
+        allow create: if belongsToGarage(garageId);
+        allow update: if belongsToGarage(garageId);
+        allow delete: if isGarageOwner(garageId);
+      }
+
+      // ====================================
+      // Notifications Subcollection
+      // ====================================
+      match /notifications/{notificationId} {
+        allow read: if belongsToGarage(garageId);
+        allow create: if belongsToGarage(garageId);
+        allow update: if belongsToGarage(garageId);
+        allow delete: if isGarageOwner(garageId);
+      }
+    }
+  }
+}
