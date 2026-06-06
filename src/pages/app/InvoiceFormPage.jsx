@@ -20,6 +20,8 @@ import Loader from '@/components/common/Loader';
 export default function InvoiceFormPage() {
   const navigate = useNavigate();
   const location = useLocation();
+  // goBack: falls back to /app/billing when opened in a fresh tab
+  const goBack = () => (window.history.length > 1 ? navigate(-1) : navigate('/app/billing'));
   const { garageId } = useAuthStore();
   const { createInvoice, loading: saving } = useInvoiceStore();
 
@@ -139,7 +141,7 @@ export default function InvoiceFormPage() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => goBack()}
           className="w-10 h-10 rounded-xl bg-white border border-surface-200 flex items-center justify-center active:bg-surface-100"
           aria-label="Go back"
         >
@@ -345,7 +347,7 @@ export default function InvoiceFormPage() {
             <div className="flex gap-3">
               <button
                 type="button"
-                onClick={() => navigate(-1)}
+                onClick={() => goBack()}
                 className="flex-1 btn-secondary"
                 disabled={saving}
               >

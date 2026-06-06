@@ -16,15 +16,18 @@ import {
   sendPasswordResetEmail,
   onAuthStateChanged,
   updateProfile,
+  deleteUser,
 } from 'firebase/auth';
 import {
   doc,
   setDoc,
   getDoc,
+  writeBatch,
   serverTimestamp,
 } from 'firebase/firestore';
 import { auth, db } from '@/config/firebase';
 import { USER_ROLES } from '@/config/constants';
+
 
 /**
  * Register a new garage owner.
@@ -40,53 +43,71 @@ export async function registerGarageOwner(data) {
   const credential = await createUserWithEmailAndPassword(auth, email, password);
   const uid = credential.user.uid;
 
-  // 2. Update display name
-  await updateProfile(credential.user, { displayName: name });
+  try {
+    // 2. Update display name in Auth
+    await updateProfile(credential.user, { displayName: name });
 
-  // 3. Create garage document
-  const garageId = uid; // Use user ID as garage ID for simplicity in MVP
-  const garageRef = doc(db, 'garages', garageId);
-  await setDoc(garageRef, {
-    name: garageName,
-    ownerId: uid,
-    phone: garagePhone || phone,
-    email: email,
-    address: {
-      city: garageCity || '',
-      state: '',
-      pincode: '',
-      street: '',
-    },
-    gstNumber: '',
-    upiId: '',
-    staffIds: [uid],
-    subscription: {
-      plan: 'free',
-      validUntil: null,
-      features: ['customers', 'services', 'billing'],
-    },
-    isActive: true,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+    // 3 & 4. Create garage doc + user profile atomically in a single batch.
+    // If either write fails, both are rolled back — no orphan documents.
+    const garageId = uid; // Use user ID as garage ID (MVP: 1 user = 1 garage)
+    const garageRef = doc(db, 'garages', garageId);
+    const userRef = doc(db, 'users', uid);
 
-  // 4. Create user profile document
-  const userRef = doc(db, 'users', uid);
-  await setDoc(userRef, {
-    uid: uid,
-    email: email,
-    displayName: name,
-    phone: phone,
-    role: USER_ROLES.GARAGE_OWNER,
-    garageId: garageId,
-    garageName: garageName,
-    isActive: true,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
+    const batch = writeBatch(db);
 
-  return { user: credential.user, garageId };
+    batch.set(garageRef, {
+      name: garageName,
+      ownerId: uid,
+      phone: garagePhone || phone,
+      email: email,
+      address: {
+        city: garageCity || '',
+        state: '',
+        pincode: '',
+        street: '',
+      },
+      gstNumber: '',
+      upiId: '',
+      staffIds: [uid],
+      subscription: {
+        plan: 'free',
+        validUntil: null,
+        features: ['customers', 'services', 'billing'],
+      },
+      isActive: true,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    batch.set(userRef, {
+      uid: uid,
+      email: email,
+      displayName: name,
+      phone: phone,
+      role: USER_ROLES.GARAGE_OWNER,
+      garageId: garageId,
+      garageName: garageName,
+      isActive: true,
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+
+    await batch.commit();
+
+    return { user: credential.user, garageId };
+  } catch (firestoreError) {
+    // Firestore writes failed after Auth user was created.
+    // Delete the Auth account so the email can be re-used on retry.
+    // If deleteUser also fails, log it — the user can still reset via Firebase Console.
+    try {
+      await deleteUser(credential.user);
+    } catch (deleteError) {
+      console.error('[Auth] Rollback failed — orphaned auth account:', deleteError);
+    }
+    throw firestoreError;
+  }
 }
+
 
 /**
  * Login with email and password.

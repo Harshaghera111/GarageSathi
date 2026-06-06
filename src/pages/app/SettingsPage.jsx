@@ -58,6 +58,7 @@ export default function SettingsPage() {
 
   const handleSeedData = async () => {
     if (!garageId) return;
+    if (!window.confirm('This will add 20 demo customers, 30 services, and 15 invoices. Continue?')) return;
     try {
       setSeeding(true);
       await seedDemoData(garageId);
@@ -73,6 +74,9 @@ export default function SettingsPage() {
 
   const handleClearData = async () => {
     if (!garageId) return;
+    if (!window.confirm(
+      'This will permanently delete ALL demo customers, services, and invoices. This cannot be undone. Continue?'
+    )) return;
     try {
       setClearing(true);
       await clearDemoData(garageId);
@@ -85,6 +89,7 @@ export default function SettingsPage() {
       setClearing(false);
     }
   };
+
 
   // Load settings on mount
   useEffect(() => {
@@ -155,14 +160,14 @@ export default function SettingsPage() {
       return;
     }
 
-    // Validate Phone & WhatsApp (minimum 10 digits)
+    // Validate Phone (required) & WhatsApp (optional — only validate if provided)
     const phoneRegex = /^[0-9+\s-]{10,15}$/;
     if (!phoneRegex.test(phone.trim())) {
       toast.error('Please enter a valid Phone Number (10-15 digits)');
       return;
     }
-    if (!phoneRegex.test(whatsapp.trim())) {
-      toast.error('Please enter a valid WhatsApp Number (10-15 digits)');
+    if (whatsapp.trim() && !phoneRegex.test(whatsapp.trim())) {
+      toast.error('WhatsApp number is invalid — enter 10-15 digits or leave it blank');
       return;
     }
 
@@ -287,14 +292,13 @@ export default function SettingsPage() {
               </div>
 
               <div className="space-y-1">
-                <label className="text-xs font-semibold text-gray-500">WhatsApp Share Number *</label>
+                <label className="text-xs font-semibold text-gray-500">WhatsApp Share Number (Optional)</label>
                 <input
                   type="tel"
                   className="input-field"
                   value={whatsapp}
                   onChange={(e) => setWhatsapp(e.target.value)}
                   placeholder="e.g. 9876543210"
-                  required
                 />
               </div>
 

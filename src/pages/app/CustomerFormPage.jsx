@@ -26,6 +26,8 @@ export default function CustomerFormPage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const isEditing = Boolean(id);
+  // goBack: falls back to /app/customers when opened in a fresh tab
+  const goBack = () => (window.history.length > 1 ? navigate(-1) : navigate('/app/customers'));
   const { garageId } = useAuthStore();
   const { addCustomer, updateCustomer } = useCustomerStore();
 
@@ -230,11 +232,20 @@ export default function CustomerFormPage() {
       }
     } catch (err) {
       console.error('Submit error:', err);
-      toast.error(isEditing ? 'Failed to update customer' : 'Failed to create customer');
+      if (err.code === 'DUPLICATE_CUSTOMER') {
+        toast.error(
+          `Phone number already registered to "${err.existingName}". View existing customer instead.`,
+          { duration: 6000 }
+        );
+        navigate(`/app/customers/${err.existingId}`);
+      } else {
+        toast.error(isEditing ? 'Failed to update customer' : 'Failed to create customer');
+      }
     } finally {
       setLoading(false);
     }
   };
+
 
   if (fetchingData) {
     return (
@@ -252,7 +263,7 @@ export default function CustomerFormPage() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button
-          onClick={() => navigate(-1)}
+            onClick={() => goBack()}
           className="w-10 h-10 rounded-xl bg-white border border-surface-200 flex items-center justify-center active:bg-surface-100 transition-colors"
           aria-label="Go back"
           disabled={loading}
@@ -534,7 +545,7 @@ export default function CustomerFormPage() {
         <div className="flex gap-4">
           <button
             type="button"
-            onClick={() => navigate(-1)}
+              onClick={() => goBack()}
             className="btn-secondary flex-1"
             disabled={loading}
           >

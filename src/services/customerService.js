@@ -40,6 +40,21 @@ function getCustomersRef(garageId) {
  */
 export async function addCustomer(garageId, customerData) {
   const ref = getCustomersRef(garageId);
+
+  // Duplicate guard: reject if a customer with the same phone already exists.
+  if (customerData.phone) {
+    const dupQ = query(ref, where('phone', '==', customerData.phone), where('isActive', '==', true), limit(1));
+    const dupSnap = await getDocs(dupQ);
+    if (!dupSnap.empty) {
+      const existing = dupSnap.docs[0];
+      const err = new Error(`A customer with phone ${customerData.phone} already exists.`);
+      err.code = 'DUPLICATE_CUSTOMER';
+      err.existingId = existing.id;
+      err.existingName = existing.data().name;
+      throw err;
+    }
+  }
+
   const docRef = await addDoc(ref, {
     ...customerData,
     totalServices: 0,
@@ -50,6 +65,7 @@ export async function addCustomer(garageId, customerData) {
   });
   return docRef.id;
 }
+
 
 /**
  * Update an existing customer.

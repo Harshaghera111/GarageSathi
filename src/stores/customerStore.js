@@ -92,22 +92,36 @@ export const useCustomerStore = create((set, get) => ({
   },
 
   /**
-   * Add a customer.
+   * Add a customer — optimistic local insert (no full refetch).
    */
   addCustomer: async (garageId, data) => {
     const id = await customerService.addCustomer(garageId, data);
-    // Refresh list
-    await get().fetchCustomers(garageId);
+    // Optimistically prepend the new customer to the local list so the list
+    // updates instantly without a 20-document refetch.
+    const newCustomer = {
+      id,
+      ...data,
+      totalServices: 0,
+      totalSpent: 0,
+      isActive: true,
+      createdAt: new Date(), // display-only; server stores serverTimestamp
+      updatedAt: new Date(),
+    };
+    set((state) => ({ customers: [newCustomer, ...state.customers] }));
     return id;
   },
 
   /**
-   * Update a customer.
+   * Update a customer — optimistic local patch (no full refetch).
    */
   updateCustomer: async (garageId, customerId, data) => {
     await customerService.updateCustomer(garageId, customerId, data);
-    // Refresh list
-    await get().fetchCustomers(garageId);
+    // Patch only the changed customer in the local list in-place.
+    set((state) => ({
+      customers: state.customers.map((c) =>
+        c.id === customerId ? { ...c, ...data, updatedAt: new Date() } : c
+      ),
+    }));
   },
 
   /**

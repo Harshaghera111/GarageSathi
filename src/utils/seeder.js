@@ -9,6 +9,7 @@
 import {
   collection,
   doc,
+  getDoc,
   writeBatch,
   getDocs,
   query,
@@ -16,6 +17,7 @@ import {
   limit,
   serverTimestamp,
 } from 'firebase/firestore';
+
 import { db } from '@/config/firebase';
 import { COLLECTIONS } from '@/config/constants';
 
@@ -254,11 +256,17 @@ export async function seedDemoData(garageId) {
     });
   }
 
-  // 4. Initialize Counter to 15
-  batch.set(counterRef, { invoiceCounter: 15 }, { merge: true });
+  // 4. Update counter: use max(currentCounter, 15) so we never overwrite
+  // a counter that is already higher (meaning real invoices have been created).
+  // Note: counterRef is already declared above at the start of this function.
+  const counterSnap = await getDoc(counterRef);
+  const currentCounter = counterSnap.exists() ? (counterSnap.data().invoiceCounter || 0) : 0;
+  const newCounter = Math.max(currentCounter, 15);
+  batch.set(counterRef, { invoiceCounter: newCounter }, { merge: true });
 
   await batch.commit();
 }
+
 
 /**
  * Deletes all demo documents created by the seeder.
@@ -284,9 +292,18 @@ export async function clearDemoData(garageId) {
   sSnap.docs.forEach((doc) => batch.delete(doc.ref));
   iSnap.docs.forEach((doc) => batch.delete(doc.ref));
 
-  // Reset invoice counter doc to 0
-  const counterRef = doc(db, COLLECTIONS.GARAGES, garageId, 'metadata', 'counters');
-  batch.set(counterRef, { invoiceCounter: 0 }, { merge: true });
+  // Counter: only reset if NO real (non-demo) invoices exist.
+  // If real invoices are present, leave the counter alone to preserve
+  // the sequential numbering for those invoices.
+  const metaCounterRef = doc(db, COLLECTIONS.GARAGES, garageId, 'metadata', 'counters');
+  const allInvoicesSnap = await getDocs(
+    query(invoicesRef, where('isDemoData', '!=', true), limit(1))
+  );
+  if (allInvoicesSnap.empty) {
+    // No real invoices exist — safe to reset counter to 0
+    batch.set(metaCounterRef, { invoiceCounter: 0 }, { merge: true });
+  }
+  // If real invoices exist, counter is intentionally left unchanged.
 
   await batch.commit();
 }

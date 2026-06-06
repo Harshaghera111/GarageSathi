@@ -33,6 +33,8 @@ export default function ServiceFormPage() {
   const { id } = useParams();
   const location = useLocation();
   const isEditing = Boolean(id);
+  // goBack: falls back to /app/services when opened in a fresh tab
+  const goBack = () => (window.history.length > 1 ? navigate(-1) : navigate('/app/services'));
   const { garageId } = useAuthStore();
   const { createService, updateService } = useServiceStore();
 
@@ -323,7 +325,7 @@ export default function ServiceFormPage() {
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
         <button
-          onClick={() => navigate(-1)}
+            onClick={() => goBack()}
           className="w-10 h-10 rounded-xl bg-white border border-surface-200 flex items-center justify-center active:bg-surface-100 transition-colors"
           aria-label="Go back"
           disabled={loading}
@@ -663,7 +665,7 @@ export default function ServiceFormPage() {
         <div className="flex gap-4">
           <button
             type="button"
-            onClick={() => navigate(-1)}
+              onClick={() => goBack()}
             className="btn-secondary flex-1"
             disabled={loading}
           >

@@ -109,6 +109,28 @@ service cloud.firestore {
         allow update: if belongsToGarage(garageId);
         allow delete: if isGarageOwner(garageId);
       }
+
+      // ====================================
+      // Settings Subcollection
+      // Stores: branding, invoice prefix, tax config.
+      // Any garage member can read; only owner can write.
+      // ====================================
+      match /settings/{settingDoc} {
+        allow read: if belongsToGarage(garageId);
+        allow write: if isGarageOwner(garageId) || isSuperAdmin();
+      }
+
+      // ====================================
+      // Metadata Subcollection
+      // Stores: invoice counter (incremented atomically
+      // by Firestore transaction during invoice creation).
+      // Any member can read; any member can write
+      // because non-owners (mechanics) can also create invoices.
+      // ====================================
+      match /metadata/{metaDoc} {
+        allow read: if belongsToGarage(garageId);
+        allow write: if belongsToGarage(garageId);
+      }
     }
   }
 }

@@ -8,7 +8,6 @@
 import {
   collection,
   doc,
-  addDoc,
   updateDoc,
   getDoc,
   getDocs,
@@ -20,6 +19,7 @@ import {
   serverTimestamp,
   runTransaction,
 } from 'firebase/firestore';
+
 import { db } from '@/config/firebase';
 import { COLLECTIONS, DEFAULTS } from '@/config/constants';
 
@@ -33,28 +33,14 @@ function getInvoicesRef(garageId) {
  * R2: Performs check to block duplicate invoices for the same serviceId.
  */
 export async function createInvoice(garageId, invoiceData) {
-  const ref = getInvoicesRef(garageId);
-
-  // R2: Duplicate Invoice Protection
-  if (invoiceData.serviceId) {
-    const q = query(ref, where('serviceId', '==', invoiceData.serviceId), limit(1));
-    const existingSnap = await getDocs(q);
-    if (!existingSnap.empty) {
-      const existingDoc = existingSnap.docs[0];
-      const err = new Error('Invoice already exists for this service.');
-      err.code = 'ALREADY_EXISTS';
-      err.invoiceId = existingDoc.id;
-      throw err;
-    }
-  }
-
   // R1: Transaction-safe invoice number generation
+  // R2: Duplicate protection via atomic service document read inside the transaction
   const counterRef = doc(db, COLLECTIONS.GARAGES, garageId, 'metadata', 'counters');
   const settingsRef = doc(db, COLLECTIONS.GARAGES, garageId, 'settings', 'profile');
-  
+
   // Allocate new document ID before transaction runs
   const newInvoiceRef = doc(collection(db, COLLECTIONS.GARAGES, garageId, COLLECTIONS.INVOICES));
-  const serviceRef = invoiceData.serviceId 
+  const serviceRef = invoiceData.serviceId
     ? doc(db, COLLECTIONS.GARAGES, garageId, COLLECTIONS.SERVICES, invoiceData.serviceId)
     : null;
 
@@ -64,10 +50,24 @@ export async function createInvoice(garageId, invoiceData) {
     // 1. Get the current counter value & custom prefix
     const counterSnap = await transaction.get(counterRef);
     const settingsSnap = await transaction.get(settingsRef);
-    
+
     let count = 1;
     if (counterSnap.exists()) {
       count = (counterSnap.data().invoiceCounter || 0) + 1;
+    }
+
+    // R2: Duplicate check — read service doc atomically inside the transaction.
+    // If invoiceId is already set on the service, another request already created
+    // an invoice for it. Abort before writing anything.
+    if (serviceRef) {
+      const serviceSnap = await transaction.get(serviceRef);
+      if (serviceSnap.exists() && serviceSnap.data().invoiceId) {
+        const existingInvoiceId = serviceSnap.data().invoiceId;
+        const err = new Error('Invoice already exists for this service.');
+        err.code = 'ALREADY_EXISTS';
+        err.invoiceId = existingInvoiceId;
+        throw err;
+      }
     }
 
     const prefix = settingsSnap.exists() ? settingsSnap.data().invoicePrefix || 'INV' : 'INV';
@@ -87,7 +87,8 @@ export async function createInvoice(garageId, invoiceData) {
       updatedAt: serverTimestamp(),
     });
 
-    // 5. Update the associated service status
+    // 5. Update the associated service — writing invoiceId here is what the
+    // duplicate check above reads. This makes the guard fully atomic.
     if (serviceRef) {
       transaction.update(serviceRef, {
         paymentStatus: invoiceData.paymentStatus || 'pending',
