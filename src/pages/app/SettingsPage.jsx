@@ -7,7 +7,7 @@
  */
 
 import { useState, useEffect } from 'react';
-import { Store, User, FileText, Check, Palette, Upload, X, Database } from 'lucide-react';
+import { Store, FileText, Check, Palette, Upload, X, Database } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 import { useAuthStore } from '@/stores/authStore';
@@ -101,6 +101,7 @@ export default function SettingsPage() {
   // Sync form states with loaded settings
   useEffect(() => {
     if (settings) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setGarageName(settings.garageName || '');
       setOwnerName(settings.ownerName || '');
       setPhone(settings.phone || '');

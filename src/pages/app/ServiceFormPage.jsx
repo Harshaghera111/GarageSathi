@@ -25,7 +25,7 @@ import { useAuthStore } from '@/stores/authStore';
 import { useServiceStore } from '@/stores/serviceStore';
 import { getService } from '@/services/serviceService';
 import { getCustomer, searchCustomers } from '@/services/customerService';
-import { SERVICE_TYPES, SERVICE_TYPE_LABELS, SERVICE_STATUS } from '@/config/constants';
+import { SERVICE_TYPE_LABELS } from '@/config/constants';
 import { validateRequired, validatePositiveNumber } from '@/utils/validators';
 
 export default function ServiceFormPage() {
@@ -64,13 +64,34 @@ export default function ServiceFormPage() {
   const [odometer, setOdometer] = useState('');
 
   // Keep details for edit mode
-  const [existingService, setExistingService] = useState(null);
+  // Removed existingService state since it's unused
 
   // Validation errors
   const [errors, setErrors] = useState({});
 
   // Debouncing timeout reference for customer search
   const searchTimeoutRef = useRef(null);
+
+  // Select customer from suggestion list
+  const handleSelectCustomer = (customer) => {
+    setSelectedCustomer(customer);
+    setVehiclesList(customer.vehicles || []);
+    setCustomerSearch('');
+    setCustomerSuggestions([]);
+    
+    // Automatically select the first vehicle if available
+    if (customer.vehicles && customer.vehicles.length > 0) {
+      setSelectedVehicleIndex('0');
+      setOdometer(customer.vehicles[0].odometer !== undefined ? String(customer.vehicles[0].odometer) : '');
+    } else {
+      setSelectedVehicleIndex('');
+      setOdometer('');
+    }
+
+    if (errors.customer) {
+      setErrors((prev) => ({ ...prev, customer: '' }));
+    }
+  };
 
   // Fetch preselected customer if passed in routing state (e.g. from CustomerDetailPage)
   useEffect(() => {
@@ -109,7 +130,6 @@ export default function ServiceFormPage() {
           return;
         }
 
-        setExistingService(serviceData);
         setServiceType(serviceData.serviceType || '');
         setProblemDescription(serviceData.problemDescription || '');
         setWorkNotes(serviceData.workNotes || '');
@@ -182,26 +202,7 @@ export default function ServiceFormPage() {
     }, 300);
   };
 
-  // Select customer from suggestion list
-  const handleSelectCustomer = (customer) => {
-    setSelectedCustomer(customer);
-    setVehiclesList(customer.vehicles || []);
-    setCustomerSearch('');
-    setCustomerSuggestions([]);
-    
-    // Automatically select the first vehicle if available
-    if (customer.vehicles && customer.vehicles.length > 0) {
-      setSelectedVehicleIndex('0');
-      setOdometer(customer.vehicles[0].odometer !== undefined ? String(customer.vehicles[0].odometer) : '');
-    } else {
-      setSelectedVehicleIndex('');
-      setOdometer('');
-    }
 
-    if (errors.customer) {
-      setErrors((prev) => ({ ...prev, customer: '' }));
-    }
-  };
 
   // Handle vehicle dropdown change
   const handleVehicleChange = (indexVal) => {

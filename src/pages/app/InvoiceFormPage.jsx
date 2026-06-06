@@ -8,13 +8,13 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { ArrowLeft, Receipt, Check, AlertCircle, FileText } from 'lucide-react';
+import { ArrowLeft, Receipt, Check, AlertCircle } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 import { useAuthStore } from '@/stores/authStore';
 import { useInvoiceStore } from '@/stores/invoiceStore';
 import { getServices } from '@/services/serviceService';
-import { formatCurrency, formatDate } from '@/utils/formatters';
+import { formatCurrency } from '@/utils/formatters';
 import Loader from '@/components/common/Loader';
 
 export default function InvoiceFormPage() {
@@ -40,6 +40,7 @@ export default function InvoiceFormPage() {
   useEffect(() => {
     if (location.state?.service) {
       const service = location.state.service;
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setSelectedService(service);
       setLaborCharge(service.laborCharge || 0);
       setPartsCharge(service.partsCharge || 0);

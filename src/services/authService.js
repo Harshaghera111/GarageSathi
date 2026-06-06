@@ -20,7 +20,6 @@ import {
 } from 'firebase/auth';
 import {
   doc,
-  setDoc,
   getDoc,
   writeBatch,
   serverTimestamp,

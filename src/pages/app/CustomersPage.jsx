@@ -25,7 +25,6 @@ export default function CustomersPage() {
     customers,
     loading,
     hasMore,
-    sortBy,
     sortOrder,
     fetchCustomers,
     searchCustomers,

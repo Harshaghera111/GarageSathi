@@ -17,7 +17,6 @@ import {
   Wrench,
   User,
   Bike,
-  Calendar,
   Gauge,
   FileText,
   IndianRupee,

@@ -92,7 +92,7 @@ export const useInvoiceStore = create((set, get) => ({
   createInvoice: async (garageId, data) => {
     set({ loading: true, error: null });
     try {
-      const { id, invoiceNumber } = await invoiceService.createInvoice(garageId, data);
+      const { id } = await invoiceService.createInvoice(garageId, data);
       await get().fetchInvoices(garageId);
       set({ loading: false });
       return id;

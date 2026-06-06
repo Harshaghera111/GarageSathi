@@ -8,7 +8,7 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Plus, Receipt, ChevronRight, Search, FileText } from 'lucide-react';
+import { Plus, Receipt, ChevronRight } from 'lucide-react';
 
 import { useAuthStore } from '@/stores/authStore';
 import { useInvoiceStore } from '@/stores/invoiceStore';
@@ -17,7 +17,6 @@ import PageHeader from '@/components/common/PageHeader';
 import SearchBar from '@/components/common/SearchBar';
 import Loader from '@/components/common/Loader';
 import EmptyState from '@/components/common/EmptyState';
-import Badge from '@/components/common/Badge';
 
 const PAYMENT_STATUS_COLORS = {
   pending: { bg: 'bg-amber-50', text: 'text-amber-700', border: 'border-amber-200' },

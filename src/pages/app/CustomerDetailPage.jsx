@@ -22,7 +22,6 @@ import {
   FileText,
   Gauge,
   Wrench,
-  TrendingUp,
   IndianRupee,
 } from 'lucide-react';
 

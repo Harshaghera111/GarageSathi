@@ -9,7 +9,7 @@
 
 import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ArrowLeft, Printer, MessageCircle, DollarSign, Check, FileText, Shield } from 'lucide-react';
+import { ArrowLeft, Printer, MessageCircle, DollarSign, Check, Shield } from 'lucide-react';
 import { toast } from 'react-hot-toast';
 
 import { useAuthStore } from '@/stores/authStore';

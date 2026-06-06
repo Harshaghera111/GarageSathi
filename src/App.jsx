@@ -14,6 +14,7 @@ import { onAuthChange, getUserProfile } from '@/services/authService';
 import Loader from '@/components/common/Loader';
 import ErrorBoundary from '@/components/common/ErrorBoundary';
 import ProtectedRoute from '@/components/auth/ProtectedRoute';
+import GuestRoute from '@/components/auth/GuestRoute';
 import AppLayout from '@/components/layout/AppLayout';
 
 // ====================================
@@ -101,12 +102,14 @@ export default function App() {
         <Suspense fallback={<PageLoader />}>
           <Routes>
             {/* ====================================
-                Public Routes
+                Guest Routes
                 ==================================== */}
-            <Route path="/" element={<Navigate to="/login" replace />} />
-            <Route path="/login" element={<LoginPage />} />
-            <Route path="/register" element={<RegisterPage />} />
-            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route element={<GuestRoute />}>
+              <Route path="/" element={<Navigate to="/login" replace />} />
+              <Route path="/login" element={<LoginPage />} />
+              <Route path="/register" element={<RegisterPage />} />
+              <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            </Route>
 
             {/* ====================================
                 Protected App Routes
