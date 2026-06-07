@@ -1,0 +1,96 @@
+
+C:\Users\HARSH\OneDrive\Desktop\Projects\GarageSathi\src\pages\app\BillingPage.jsx
+  11:39  error  'Search' is defined but never used    no-unused-vars
+  11:47  error  'FileText' is defined but never used  no-unused-vars
+  20:8   error  'Badge' is defined but never used     no-unused-vars
+
+C:\Users\HARSH\OneDrive\Desktop\Projects\GarageSathi\src\pages\app\CustomerDetailPage.jsx
+  25:3  error  'TrendingUp' is defined but never used  no-unused-vars
+
+C:\Users\HARSH\OneDrive\Desktop\Projects\GarageSathi\src\pages\app\CustomersPage.jsx
+  28:5  error  'sortBy' is assigned a value but never used  no-unused-vars
+
+C:\Users\HARSH\OneDrive\Desktop\Projects\GarageSathi\src\pages\app\InvoiceDetailPage.jsx
+  12:64  error  'FileText' is defined but never used  no-unused-vars
+
+C:\Users\HARSH\OneDrive\Desktop\Projects\GarageSathi\src\pages\app\InvoiceFormPage.jsx
+  11:50  error  'FileText' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            no-unused-vars
+  17:26  error  'formatDate' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          no-unused-vars
+  43:7   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  41 |     if (location.state?.service) {
+  42 |       const service = location.state.service;
+> 43 |       setSelectedService(service);
+     |       ^^^^^^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  44 |       setLaborCharge(service.laborCharge || 0);
+  45 |       setPartsCharge(service.partsCharge || 0);
+  46 |     } else if (garageId) {  react-hooks/set-state-in-effect
+
+C:\Users\HARSH\OneDrive\Desktop\Projects\GarageSathi\src\pages\app\ServiceDetailPage.jsx
+  20:3  error  'Calendar' is defined but never used  no-unused-vars
+
+C:\Users\HARSH\OneDrive\Desktop\Projects\GarageSathi\src\pages\app\ServiceFormPage.jsx
+  28:10  error  'SERVICE_TYPES' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              no-unused-vars
+  28:46  error  'SERVICE_STATUS' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             no-unused-vars
+  67:10  error  'existingService' is assigned a value but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                   no-unused-vars
+  85:11  error  Error: Cannot access variable before it is declared
+
+`handleSelectCustomer` is accessed before it is declared, which prevents the earlier access from updating when this value changes over time.
+
+  83 |         const data = await getCustomer(garageId, preselectedId);
+  84 |         if (data) {
+> 85 |           handleSelectCustomer(data);
+     |           ^^^^^^^^^^^^^^^^^^^^ `handleSelectCustomer` accessed before it is declared
+  86 |         }
+  87 |       } catch (err) {
+  88 |         console.error('Error fetching preselected customer:', err);
+
+  184 |
+  185 |   // Select customer from suggestion list
+> 186 |   const handleSelectCustomer = (customer) => {
+      |   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 187 |     setSelectedCustomer(customer);
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 188 |     setVehiclesList(customer.vehicles || []);
+      …
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 203 |     }
+      | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+> 204 |   };
+      | ^^^^^ `handleSelectCustomer` is declared here
+  205 |
+  206 |   // Handle vehicle dropdown change
+  207 |   const handleVehicleChange = (indexVal) => {  react-hooks/immutability
+
+C:\Users\HARSH\OneDrive\Desktop\Projects\GarageSathi\src\pages\app\SettingsPage.jsx
+   10:17  error  'User' is defined but never used                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           no-unused-vars
+  104:7   error  Error: Calling setState synchronously within an effect can trigger cascading renders
+
+Effects are intended to synchronize state between React and external systems such as manually updating the DOM, state management libraries, or other platform APIs. In general, the body of an effect should do one or both of the following:
+* Update external systems with the latest state from React.
+* Subscribe for updates from some external system, calling setState in a callback function when external state changes.
+
+Calling setState synchronously within an effect body causes cascading renders that can hurt performance, and is not recommended. (https://react.dev/learn/you-might-not-need-an-effect).
+
+  102 |   useEffect(() => {
+  103 |     if (settings) {
+> 104 |       setGarageName(settings.garageName || '');
+      |       ^^^^^^^^^^^^^ Avoid calling setState() directly within an effect
+  105 |       setOwnerName(settings.ownerName || '');
+  106 |       setPhone(settings.phone || '');
+  107 |       setWhatsapp(settings.whatsapp || '');  react-hooks/set-state-in-effect
+
+C:\Users\HARSH\OneDrive\Desktop\Projects\GarageSathi\src\services\authService.js
+  23:3  error  'setDoc' is defined but never used  no-unused-vars
+
+C:\Users\HARSH\OneDrive\Desktop\Projects\GarageSathi\src\stores\invoiceStore.js
+  95:19  error  'invoiceNumber' is assigned a value but never used  no-unused-vars
+
+✖ 18 problems (18 errors, 0 warnings)
+

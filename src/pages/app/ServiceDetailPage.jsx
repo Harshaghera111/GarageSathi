@@ -14,6 +14,7 @@ import {
   Edit2,
   Phone,
   MessageCircle,
+  MessageSquare,
   Wrench,
   User,
   Bike,
@@ -22,10 +23,12 @@ import {
   IndianRupee,
   Clock,
   Briefcase,
+  Send,
 } from 'lucide-react';
 
 import { useAuthStore } from '@/stores/authStore';
 import { useServiceStore } from '@/stores/serviceStore';
+import { useSettingsStore } from '@/stores/settingsStore';
 import { getService } from '@/services/serviceService';
 import {
   formatPhone,
@@ -35,6 +38,14 @@ import {
   formatVehicleNumber,
 } from '@/utils/formatters';
 import { openWhatsApp } from '@/utils/whatsapp';
+import {
+  buildReceivedMessage,
+  buildInspectionReportMessage,
+  buildApprovalRequestMessage,
+  buildWorkStartedMessage,
+  buildReadyForPickupMessage,
+  buildInvoiceSummaryMessage,
+} from '@/utils/messageTemplates';
 import Badge from '@/components/common/Badge';
 import Loader from '@/components/common/Loader';
 import {
@@ -50,6 +61,8 @@ export default function ServiceDetailPage() {
   // C2 FIX: Use the Zustand store so that status updates propagate to the
   // service list and dashboard counts without requiring a manual navigation.
   const updateServiceInStore = useServiceStore((s) => s.updateService);
+  const settings = useSettingsStore((s) => s.settings);
+  const garageName = settings?.garageName || 'GarageSathi Partner Garage';
 
   const [service, setService] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -315,6 +328,165 @@ export default function ServiceDetailPage() {
             <span className="text-primary-800 text-lg">{formatCurrency(totalCost)}</span>
           </div>
         </div>
+      </div>
+
+      {/* ================================================
+           Customer Communication Center
+           ================================================ */}
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2 border-b border-surface-100 pb-3">
+          <MessageSquare className="w-5 h-5 text-green-500" />
+          <h2 className="font-semibold text-gray-900">Customer Communication</h2>
+          {!service.customerPhone && (
+            <span className="ml-auto text-[11px] font-medium text-red-500 bg-red-50 border border-red-200 rounded-full px-2 py-0.5">
+              Phone missing
+            </span>
+          )}
+        </div>
+
+        {!service.customerPhone && (
+          <p className="text-xs text-gray-400 italic -mt-1">
+            Add a customer phone number to enable WhatsApp messages.
+          </p>
+        )}
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          {/* 1. Send Received Message */}
+          <button
+            id="btn-wa-received"
+            onClick={() => {
+              if (!service.customerPhone) {
+                toast.error('Customer phone number not available.');
+                return;
+              }
+              openWhatsApp(
+                service.customerPhone,
+                buildReceivedMessage(service, garageName)
+              );
+            }}
+            disabled={!service.customerPhone}
+            className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
+          >
+            <span className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+              <Send className="w-4 h-4 text-green-600" />
+            </span>
+            <span>Send Received Message</span>
+          </button>
+
+          {/* 2. Send Inspection Report */}
+          <button
+            id="btn-wa-inspection"
+            onClick={() => {
+              if (!service.customerPhone) {
+                toast.error('Customer phone number not available.');
+                return;
+              }
+              openWhatsApp(
+                service.customerPhone,
+                buildInspectionReportMessage(service, garageName)
+              );
+            }}
+            disabled={!service.customerPhone}
+            className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
+          >
+            <span className="w-8 h-8 rounded-lg bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <FileText className="w-4 h-4 text-blue-600" />
+            </span>
+            <span>Send Inspection Report</span>
+          </button>
+
+          {/* 3. Send Approval Request */}
+          <button
+            id="btn-wa-approval"
+            onClick={() => {
+              if (!service.customerPhone) {
+                toast.error('Customer phone number not available.');
+                return;
+              }
+              openWhatsApp(
+                service.customerPhone,
+                buildApprovalRequestMessage(service, garageName)
+              );
+            }}
+            disabled={!service.customerPhone}
+            className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
+          >
+            <span className="w-8 h-8 rounded-lg bg-amber-100 flex items-center justify-center flex-shrink-0">
+              <MessageCircle className="w-4 h-4 text-amber-600" />
+            </span>
+            <span>Send Approval Request</span>
+          </button>
+
+          {/* 4. Send Work Started Message */}
+          <button
+            id="btn-wa-work-started"
+            onClick={() => {
+              if (!service.customerPhone) {
+                toast.error('Customer phone number not available.');
+                return;
+              }
+              openWhatsApp(
+                service.customerPhone,
+                buildWorkStartedMessage(service, garageName)
+              );
+            }}
+            disabled={!service.customerPhone}
+            className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
+          >
+            <span className="w-8 h-8 rounded-lg bg-orange-100 flex items-center justify-center flex-shrink-0">
+              <Wrench className="w-4 h-4 text-orange-600" />
+            </span>
+            <span>Send Work Started Message</span>
+          </button>
+
+          {/* 5. Send Ready For Pickup Message */}
+          <button
+            id="btn-wa-pickup"
+            onClick={() => {
+              if (!service.customerPhone) {
+                toast.error('Customer phone number not available.');
+                return;
+              }
+              openWhatsApp(
+                service.customerPhone,
+                buildReadyForPickupMessage(service, garageName)
+              );
+            }}
+            disabled={!service.customerPhone}
+            className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
+          >
+            <span className="w-8 h-8 rounded-lg bg-green-100 flex items-center justify-center flex-shrink-0">
+              <Bike className="w-4 h-4 text-green-600" />
+            </span>
+            <span>Send Ready For Pickup</span>
+          </button>
+
+          {/* 6. Send Invoice Summary */}
+          <button
+            id="btn-wa-invoice"
+            onClick={() => {
+              if (!service.customerPhone) {
+                toast.error('Customer phone number not available.');
+                return;
+              }
+              openWhatsApp(
+                service.customerPhone,
+                buildInvoiceSummaryMessage(service, garageName)
+              );
+            }}
+            disabled={!service.customerPhone}
+            className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
+          >
+            <span className="w-8 h-8 rounded-lg bg-purple-100 flex items-center justify-center flex-shrink-0">
+              <IndianRupee className="w-4 h-4 text-purple-600" />
+            </span>
+            <span>Send Invoice Summary</span>
+          </button>
+        </div>
+
+        <p className="text-[11px] text-gray-400 font-medium text-center">
+          Opens WhatsApp with pre-filled message. You send it manually.
+        </p>
       </div>
 
       {/* Generate or View Invoice */}
