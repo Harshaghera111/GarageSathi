@@ -16,6 +16,8 @@ import {
   SERVICE_STATUS_LABELS,
   SERVICE_STATUS_COLORS,
   SERVICE_TYPE_LABELS,
+  APPROVAL_STATUS_LABELS,
+  APPROVAL_STATUS_COLORS,
 } from '@/config/constants';
 import PageHeader from '@/components/common/PageHeader';
 import SearchBar from '@/components/common/SearchBar';
@@ -189,6 +191,22 @@ export default function ServicesPage() {
                     <span>•</span>
                     <span>{formatDate(service.createdAt)}</span>
                   </div>
+
+                  {/* Approval status badge — only when relevant */}
+                  {(() => {
+                    const aStatus = service.approvalStatus || 'not_required';
+                    if (aStatus === 'not_required') return null;
+                    return (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <Badge variant={APPROVAL_STATUS_COLORS[aStatus]}>
+                          {aStatus === 'pending' && '⏳ '}
+                          {aStatus === 'approved' && '✅ '}
+                          {aStatus === 'rejected' && '❌ '}
+                          {APPROVAL_STATUS_LABELS[aStatus]}
+                        </Badge>
+                      </div>
+                    );
+                  })()}
                 </div>
 
                 {/* Right side: Amount and edit button */}

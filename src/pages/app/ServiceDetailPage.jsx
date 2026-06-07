@@ -2,8 +2,8 @@
  * ServiceDetailPage — GarageSathi
  *
  * Full implementation for service record detailed view.
- * Displays diagnostic info, cost items, auto-updating status dropdown,
- * and quick actions (Call, WhatsApp, Edit, invoice placeholder).
+ * Phase 1: Customer Communication Center (WhatsApp message templates).
+ * Phase 2: Customer Approval Workflow (approval status, guards, audit trail).
  */
 
 import { useState, useEffect } from 'react';
@@ -24,12 +24,17 @@ import {
   Clock,
   Briefcase,
   Send,
+  CheckCircle,
+  XCircle,
+  AlertCircle,
+  ShieldCheck,
 } from 'lucide-react';
 
 import { useAuthStore } from '@/stores/authStore';
 import { useServiceStore } from '@/stores/serviceStore';
 import { useSettingsStore } from '@/stores/settingsStore';
 import { getService } from '@/services/serviceService';
+import { updateApprovalStatus } from '@/services/serviceService';
 import {
   formatPhone,
   formatCurrency,
@@ -52,14 +57,21 @@ import {
   SERVICE_STATUS_LABELS,
   SERVICE_STATUS_COLORS,
   SERVICE_TYPE_LABELS,
+  APPROVAL_STATUS_LABELS,
+  APPROVAL_STATUS_COLORS,
 } from '@/config/constants';
+
+// ---------------------------------------------------------------------------
+// Helper: resolve approvalStatus safely (backward compat with old records)
+// ---------------------------------------------------------------------------
+function getApprovalStatus(service) {
+  return service?.approvalStatus || 'not_required';
+}
 
 export default function ServiceDetailPage() {
   const navigate = useNavigate();
   const { id } = useParams();
   const { garageId } = useAuthStore();
-  // C2 FIX: Use the Zustand store so that status updates propagate to the
-  // service list and dashboard counts without requiring a manual navigation.
   const updateServiceInStore = useServiceStore((s) => s.updateService);
   const settings = useSettingsStore((s) => s.settings);
   const garageName = settings?.garageName || 'GarageSathi Partner Garage';
@@ -67,6 +79,7 @@ export default function ServiceDetailPage() {
   const [service, setService] = useState(null);
   const [loading, setLoading] = useState(true);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [updatingApproval, setUpdatingApproval] = useState(false);
 
   // Load service details on mount
   useEffect(() => {
@@ -88,22 +101,32 @@ export default function ServiceDetailPage() {
         setLoading(false);
       }
     }
-
     loadServiceData();
   }, [garageId, id, navigate]);
 
-  // Handle instant status change
-  // C2 FIX: Calls Zustand store so the service list stays in sync.
-  // H4 FIX: Refetches the service from Firestore after update so the
-  //         displayed updatedAt timestamp is real, not a client-faked value.
+  // -------------------------------------------------------------------------
+  // Handle job status change — guarded by approval workflow
+  // -------------------------------------------------------------------------
   const handleStatusChange = async (newStatus) => {
     if (!garageId || !id || !service) return;
 
+    const approval = getApprovalStatus(service);
+
+    // Block completion/delivery if approval is pending
+    if (approval === 'pending' && (newStatus === 'completed' || newStatus === 'delivered')) {
+      toast.error('Customer approval is pending. Cannot proceed to Completed or Delivered.');
+      return;
+    }
+
+    // Block completion if approval was rejected
+    if (approval === 'rejected' && (newStatus === 'completed' || newStatus === 'delivered')) {
+      toast.error('Repair was rejected by customer. Cannot mark as Completed or Delivered.');
+      return;
+    }
+
     setUpdatingStatus(true);
     try {
-      // 1. Write to Firestore AND update the Zustand store's service list
       await updateServiceInStore(garageId, id, { status: newStatus });
-      // 2. Refetch this single document to get the real server-generated updatedAt
       const refreshed = await getService(garageId, id);
       if (refreshed) setService(refreshed);
       toast.success(`Job status updated to ${SERVICE_STATUS_LABELS[newStatus]}`);
@@ -115,6 +138,78 @@ export default function ServiceDetailPage() {
     }
   };
 
+  // -------------------------------------------------------------------------
+  // Handle approval status update
+  // -------------------------------------------------------------------------
+  const handleApprovalUpdate = async (newApprovalStatus) => {
+    if (!garageId || !id || !service) return;
+
+    const labels = {
+      pending: 'Mark as Pending Approval',
+      approved: 'Mark as Approved',
+      rejected: 'Mark as Rejected',
+    };
+
+    const confirmed = window.confirm(
+      `Are you sure you want to ${labels[newApprovalStatus] || 'update'}?\n\nThis will update the approval status for:\n${service.customerName} — ${service.vehicleNumber}`
+    );
+    if (!confirmed) return;
+
+    setUpdatingApproval(true);
+    try {
+      await updateApprovalStatus(garageId, id, newApprovalStatus);
+      const refreshed = await getService(garageId, id);
+      if (refreshed) setService(refreshed);
+      toast.success(`Approval status updated to ${APPROVAL_STATUS_LABELS[newApprovalStatus]}`);
+    } catch (err) {
+      console.error('Error updating approval status:', err);
+      toast.error('Failed to update approval status');
+    } finally {
+      setUpdatingApproval(false);
+    }
+  };
+
+  // -------------------------------------------------------------------------
+  // Handle "Send Approval Request" WhatsApp — auto-sets pending first
+  // -------------------------------------------------------------------------
+  const handleSendApprovalRequest = async () => {
+    if (!service.customerPhone) {
+      toast.error('Customer phone number not available.');
+      return;
+    }
+
+    // Auto-set approvalStatus = pending + approvalRequestedAt before opening WA
+    try {
+      await updateApprovalStatus(garageId, id, 'pending');
+      const refreshed = await getService(garageId, id);
+      if (refreshed) setService(refreshed);
+    } catch (err) {
+      console.error('Error setting approval pending:', err);
+      // Still proceed to open WhatsApp even if Firestore write fails
+    }
+
+    openWhatsApp(service.customerPhone, buildApprovalRequestMessage(service, garageName));
+  };
+
+  // -------------------------------------------------------------------------
+  // Guard: invoice generation
+  // -------------------------------------------------------------------------
+  const handleGenerateInvoice = () => {
+    const approval = getApprovalStatus(service);
+    if (approval === 'pending') {
+      toast.error('Customer approval is pending. Cannot generate invoice.');
+      return;
+    }
+    if (approval === 'rejected') {
+      toast.error('Repair was rejected by customer. Cannot generate invoice.');
+      return;
+    }
+    navigate('/app/billing/new', { state: { service } });
+  };
+
+  // -------------------------------------------------------------------------
+  // Render
+  // -------------------------------------------------------------------------
   if (loading) {
     return <Loader fullPage text="Loading service details..." />;
   }
@@ -133,9 +228,11 @@ export default function ServiceDetailPage() {
   const labor = service.laborCharge || 0;
   const parts = service.partsCharge || 0;
   const totalCost = labor + parts;
+  const approvalStatus = getApprovalStatus(service);
 
   return (
     <div className="p-4 max-w-2xl mx-auto pb-24 space-y-6">
+
       {/* Top Header Row */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
@@ -162,7 +259,6 @@ export default function ServiceDetailPage() {
           </div>
         </div>
 
-        {/* Edit Button */}
         <button
           onClick={() => navigate(`/app/services/${service.id}/edit`)}
           className="w-10 h-10 rounded-xl bg-white border border-surface-200 flex items-center justify-center active:bg-surface-100 transition-colors"
@@ -170,6 +266,132 @@ export default function ServiceDetailPage() {
         >
           <Edit2 className="w-5 h-5 text-gray-600" />
         </button>
+      </div>
+
+      {/* =====================================================
+           PHASE 2 — Customer Approval Card
+           ===================================================== */}
+      <div className={`card space-y-4 ${
+        approvalStatus === 'pending'
+          ? 'border-amber-300 bg-amber-50'
+          : approvalStatus === 'rejected'
+          ? 'border-red-300 bg-red-50'
+          : approvalStatus === 'approved'
+          ? 'border-green-300 bg-green-50'
+          : ''
+      }`}>
+        <div className="flex items-center gap-2 border-b border-surface-100 pb-3">
+          <ShieldCheck className={`w-5 h-5 ${
+            approvalStatus === 'approved' ? 'text-green-600'
+            : approvalStatus === 'rejected' ? 'text-red-500'
+            : approvalStatus === 'pending' ? 'text-amber-500'
+            : 'text-gray-400'
+          }`} />
+          <h2 className="font-semibold text-gray-900">Customer Approval</h2>
+          <div className="ml-auto">
+            <Badge variant={APPROVAL_STATUS_COLORS[approvalStatus]}>
+              {approvalStatus === 'approved' && '✅ '}
+              {approvalStatus === 'pending' && '⏳ '}
+              {approvalStatus === 'rejected' && '❌ '}
+              {approvalStatus === 'not_required' && '⚪ '}
+              {APPROVAL_STATUS_LABELS[approvalStatus]}
+            </Badge>
+          </div>
+        </div>
+
+        {/* Alert banners */}
+        {approvalStatus === 'pending' && (
+          <div className="flex items-start gap-2 p-3 bg-amber-100 border border-amber-300 rounded-xl">
+            <AlertCircle className="w-4 h-4 text-amber-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-800 font-medium">
+              Waiting for customer response. Invoice generation and job completion are blocked until the customer approves.
+            </p>
+          </div>
+        )}
+        {approvalStatus === 'rejected' && (
+          <div className="flex items-start gap-2 p-3 bg-red-100 border border-red-300 rounded-xl">
+            <XCircle className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-red-800 font-medium">
+              Customer has rejected the repair. Invoice generation and job completion are blocked.
+            </p>
+          </div>
+        )}
+        {approvalStatus === 'approved' && (
+          <div className="flex items-start gap-2 p-3 bg-green-100 border border-green-300 rounded-xl">
+            <CheckCircle className="w-4 h-4 text-green-600 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-green-800 font-medium">
+              Customer has approved the repair. You may proceed with completing the job.
+            </p>
+          </div>
+        )}
+
+        {/* Audit Trail */}
+        <div className="space-y-1.5 text-xs text-gray-500">
+          {service.approvalRequestedAt && (
+            <div className="flex items-center gap-1.5">
+              <Clock className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+              <span>
+                <span className="font-semibold text-gray-700">Approval Requested:</span>{' '}
+                {formatDateTime(service.approvalRequestedAt)}
+              </span>
+            </div>
+          )}
+          {service.approvalApprovedAt && (
+            <div className="flex items-center gap-1.5">
+              <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+              <span>
+                <span className="font-semibold text-gray-700">Approved:</span>{' '}
+                {formatDateTime(service.approvalApprovedAt)}
+              </span>
+            </div>
+          )}
+          {service.approvalRejectedAt && (
+            <div className="flex items-center gap-1.5">
+              <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+              <span>
+                <span className="font-semibold text-gray-700">Rejected:</span>{' '}
+                {formatDateTime(service.approvalRejectedAt)}
+              </span>
+            </div>
+          )}
+        </div>
+
+        {/* Action buttons */}
+        <div className="flex flex-wrap gap-2 pt-1">
+          {approvalStatus !== 'approved' && (
+            <button
+              id="btn-approval-approve"
+              onClick={() => handleApprovalUpdate('approved')}
+              disabled={updatingApproval}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 active:bg-green-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <CheckCircle className="w-4 h-4" />
+              Mark Approved
+            </button>
+          )}
+          {approvalStatus !== 'rejected' && (
+            <button
+              id="btn-approval-reject"
+              onClick={() => handleApprovalUpdate('rejected')}
+              disabled={updatingApproval}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-red-600 text-white text-sm font-semibold hover:bg-red-700 active:bg-red-800 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <XCircle className="w-4 h-4" />
+              Mark Rejected
+            </button>
+          )}
+          {approvalStatus !== 'pending' && (
+            <button
+              id="btn-approval-pending"
+              onClick={() => handleApprovalUpdate('pending')}
+              disabled={updatingApproval}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-amber-500 text-white text-sm font-semibold hover:bg-amber-600 active:bg-amber-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <AlertCircle className="w-4 h-4" />
+              Mark Pending
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Status Management Card */}
@@ -180,7 +402,6 @@ export default function ServiceDetailPage() {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 items-center">
-          {/* Badge Display */}
           <div className="flex items-center gap-3">
             <span className="text-sm text-gray-400 font-medium">Current Status:</span>
             <Badge variant={SERVICE_STATUS_COLORS[service.status] || 'neutral'}>
@@ -188,7 +409,6 @@ export default function ServiceDetailPage() {
             </Badge>
           </div>
 
-          {/* Quick Updater Dropdown */}
           <div className="relative">
             <select
               value={service.status}
@@ -208,6 +428,14 @@ export default function ServiceDetailPage() {
           </div>
         </div>
 
+        {/* Guard hint */}
+        {(approvalStatus === 'pending' || approvalStatus === 'rejected') && (
+          <p className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 font-medium">
+            ⚠️ Completed and Delivered statuses are blocked while approval is{' '}
+            <strong>{APPROVAL_STATUS_LABELS[approvalStatus].toLowerCase()}</strong>.
+          </p>
+        )}
+
         <div className="text-[11px] text-gray-400 font-medium">
           Last Updated: {service.updatedAt ? formatDateTime(service.updatedAt) : formatDate(service.createdAt)}
         </div>
@@ -226,7 +454,6 @@ export default function ServiceDetailPage() {
             <p className="text-xs text-gray-500 mt-0.5">{service.customerPhone ? formatPhone(service.customerPhone) : 'No phone'}</p>
           </div>
 
-          {/* Quick Contacts */}
           {service.customerPhone && (
             <div className="flex gap-2 pt-1">
               <a
@@ -270,11 +497,10 @@ export default function ServiceDetailPage() {
       <div className="card space-y-4">
         <div className="flex items-center gap-2 border-b border-surface-100 pb-3">
           <Wrench className="w-5 h-5 text-primary-500" />
-          <h2 className="font-semibold text-gray-900">Diagnostics & Remarks</h2>
+          <h2 className="font-semibold text-gray-900">Diagnostics &amp; Remarks</h2>
         </div>
 
         <div className="space-y-4 text-sm">
-          {/* Complaints */}
           <div>
             <span className="text-gray-400 block text-xs font-semibold mb-1">Problem Description / Complaints</span>
             <div className="p-3 bg-surface-50 rounded-xl border border-surface-200 flex gap-2 items-start">
@@ -283,7 +509,6 @@ export default function ServiceDetailPage() {
             </div>
           </div>
 
-          {/* Work Notes */}
           <div>
             <span className="text-gray-400 block text-xs font-semibold mb-1">Mechanic Work Notes</span>
             <div className="p-3 bg-surface-50 rounded-xl border border-surface-200">
@@ -295,7 +520,6 @@ export default function ServiceDetailPage() {
             </div>
           </div>
 
-          {/* Mechanic */}
           <div className="flex items-center gap-2 text-xs text-gray-500 font-medium pt-1">
             <Briefcase className="w-4 h-4 text-gray-400" />
             <span>Assigned Mechanic: <strong className="text-gray-900 font-semibold">{service.assignedMechanic || 'Unassigned'}</strong></span>
@@ -330,9 +554,9 @@ export default function ServiceDetailPage() {
         </div>
       </div>
 
-      {/* ================================================
-           Customer Communication Center
-           ================================================ */}
+      {/* =====================================================
+           PHASE 1 — Customer Communication Center
+           ===================================================== */}
       <div className="card space-y-4">
         <div className="flex items-center gap-2 border-b border-surface-100 pb-3">
           <MessageSquare className="w-5 h-5 text-green-500" />
@@ -359,10 +583,7 @@ export default function ServiceDetailPage() {
                 toast.error('Customer phone number not available.');
                 return;
               }
-              openWhatsApp(
-                service.customerPhone,
-                buildReceivedMessage(service, garageName)
-              );
+              openWhatsApp(service.customerPhone, buildReceivedMessage(service, garageName));
             }}
             disabled={!service.customerPhone}
             className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
@@ -381,10 +602,7 @@ export default function ServiceDetailPage() {
                 toast.error('Customer phone number not available.');
                 return;
               }
-              openWhatsApp(
-                service.customerPhone,
-                buildInspectionReportMessage(service, garageName)
-              );
+              openWhatsApp(service.customerPhone, buildInspectionReportMessage(service, garageName));
             }}
             disabled={!service.customerPhone}
             className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
@@ -395,19 +613,10 @@ export default function ServiceDetailPage() {
             <span>Send Inspection Report</span>
           </button>
 
-          {/* 3. Send Approval Request */}
+          {/* 3. Send Approval Request — auto-sets pending */}
           <button
             id="btn-wa-approval"
-            onClick={() => {
-              if (!service.customerPhone) {
-                toast.error('Customer phone number not available.');
-                return;
-              }
-              openWhatsApp(
-                service.customerPhone,
-                buildApprovalRequestMessage(service, garageName)
-              );
-            }}
+            onClick={handleSendApprovalRequest}
             disabled={!service.customerPhone}
             className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
           >
@@ -425,10 +634,7 @@ export default function ServiceDetailPage() {
                 toast.error('Customer phone number not available.');
                 return;
               }
-              openWhatsApp(
-                service.customerPhone,
-                buildWorkStartedMessage(service, garageName)
-              );
+              openWhatsApp(service.customerPhone, buildWorkStartedMessage(service, garageName));
             }}
             disabled={!service.customerPhone}
             className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
@@ -439,7 +645,7 @@ export default function ServiceDetailPage() {
             <span>Send Work Started Message</span>
           </button>
 
-          {/* 5. Send Ready For Pickup Message */}
+          {/* 5. Send Ready For Pickup */}
           <button
             id="btn-wa-pickup"
             onClick={() => {
@@ -447,10 +653,7 @@ export default function ServiceDetailPage() {
                 toast.error('Customer phone number not available.');
                 return;
               }
-              openWhatsApp(
-                service.customerPhone,
-                buildReadyForPickupMessage(service, garageName)
-              );
+              openWhatsApp(service.customerPhone, buildReadyForPickupMessage(service, garageName));
             }}
             disabled={!service.customerPhone}
             className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
@@ -469,10 +672,7 @@ export default function ServiceDetailPage() {
                 toast.error('Customer phone number not available.');
                 return;
               }
-              openWhatsApp(
-                service.customerPhone,
-                buildInvoiceSummaryMessage(service, garageName)
-              );
+              openWhatsApp(service.customerPhone, buildInvoiceSummaryMessage(service, garageName));
             }}
             disabled={!service.customerPhone}
             className="flex items-center gap-2.5 px-3 py-3 rounded-xl border border-surface-200 bg-white text-sm font-medium text-gray-700 hover:bg-green-50 hover:border-green-300 hover:text-green-700 active:bg-green-100 transition-colors duration-150 disabled:opacity-40 disabled:cursor-not-allowed text-left"
@@ -489,7 +689,7 @@ export default function ServiceDetailPage() {
         </p>
       </div>
 
-      {/* Generate or View Invoice */}
+      {/* Generate or View Invoice — guarded by approval */}
       <div className="pt-2">
         {service.invoiceId ? (
           <button
@@ -501,11 +701,19 @@ export default function ServiceDetailPage() {
           </button>
         ) : (
           <button
-            onClick={() => navigate('/app/billing/new', { state: { service } })}
-            className="btn-primary w-full py-3.5 flex items-center justify-center gap-2"
+            id="btn-generate-invoice"
+            onClick={handleGenerateInvoice}
+            disabled={approvalStatus === 'pending' || approvalStatus === 'rejected'}
+            className="btn-primary w-full py-3.5 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <FileText className="w-5 h-5" />
-            <span>Generate Invoice</span>
+            <span>
+              {approvalStatus === 'pending'
+                ? 'Invoice Blocked (Pending Approval)'
+                : approvalStatus === 'rejected'
+                ? 'Invoice Blocked (Repair Rejected)'
+                : 'Generate Invoice'}
+            </span>
           </button>
         )}
       </div>

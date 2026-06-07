@@ -95,6 +95,30 @@ export const PAYMENT_STATUS_COLORS = {
 };
 
 // ====================================
+// Approval Status — Customer Repair Authorization
+// ====================================
+export const APPROVAL_STATUS = {
+  NOT_REQUIRED: 'not_required',
+  PENDING: 'pending',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+};
+
+export const APPROVAL_STATUS_LABELS = {
+  not_required: 'Not Required',
+  pending: 'Pending Approval',
+  approved: 'Approved',
+  rejected: 'Rejected',
+};
+
+export const APPROVAL_STATUS_COLORS = {
+  not_required: 'neutral',
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'error',
+};
+
+// ====================================
 // Payment Methods — India specific
 // ====================================
 export const PAYMENT_METHODS = {

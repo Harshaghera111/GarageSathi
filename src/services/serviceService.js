@@ -43,10 +43,36 @@ export async function createService(garageId, serviceData) {
     ...serviceData,
     partsUsed: serviceData.partsUsed || [],
     paymentStatus: 'pending',
+    // Phase 2: default approval status for all new services
+    approvalStatus: serviceData.approvalStatus || 'not_required',
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
   return docRef.id;
+}
+
+/**
+ * Update the approval status and corresponding timestamp.
+ * @param {string} garageId
+ * @param {string} serviceId
+ * @param {'pending'|'approved'|'rejected'} newStatus
+ */
+export async function updateApprovalStatus(garageId, serviceId, newStatus) {
+  const ref = doc(db, COLLECTIONS.GARAGES, garageId, COLLECTIONS.SERVICES, serviceId);
+  const timestampField =
+    newStatus === 'pending'
+      ? { approvalRequestedAt: serverTimestamp() }
+      : newStatus === 'approved'
+      ? { approvalApprovedAt: serverTimestamp() }
+      : newStatus === 'rejected'
+      ? { approvalRejectedAt: serverTimestamp() }
+      : {};
+
+  await updateDoc(ref, {
+    approvalStatus: newStatus,
+    ...timestampField,
+    updatedAt: serverTimestamp(),
+  });
 }
 
 /**
