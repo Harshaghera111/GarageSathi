@@ -28,6 +28,9 @@ import {
   XCircle,
   AlertCircle,
   ShieldCheck,
+  Camera,
+  ImageIcon,
+  Shield,
 } from 'lucide-react';
 
 import { useAuthStore } from '@/stores/authStore';
@@ -53,6 +56,13 @@ import {
 } from '@/utils/messageTemplates';
 import Badge from '@/components/common/Badge';
 import Loader from '@/components/common/Loader';
+import PhotoUploader from '@/components/common/PhotoUploader';
+import PhotoGallery from '@/components/common/PhotoGallery';
+import {
+  appendServicePhotos,
+  removeServicePhoto,
+  buildDefaultVehicleImages,
+} from '@/services/photoService';
 import {
   SERVICE_STATUS_LABELS,
   SERVICE_STATUS_COLORS,
@@ -81,6 +91,11 @@ export default function ServiceDetailPage() {
   const [updatingStatus, setUpdatingStatus] = useState(false);
   const [updatingApproval, setUpdatingApproval] = useState(false);
 
+  // Phase 3: photo state
+  const [afterPhotos, setAfterPhotos] = useState([]);
+  const [vehicleImages, setVehicleImages] = useState(buildDefaultVehicleImages());
+  const [savingAfterPhotos, setSavingAfterPhotos] = useState(false);
+
   // Load service details on mount
   useEffect(() => {
     async function loadServiceData() {
@@ -94,6 +109,10 @@ export default function ServiceDetailPage() {
           return;
         }
         setService(data);
+        // Phase 3: initialize photo state from loaded service
+        const imgs = data.vehicleImages || buildDefaultVehicleImages();
+        setVehicleImages(imgs);
+        setAfterPhotos(imgs.afterRepairPhotos || []);
       } catch (err) {
         console.error('Error fetching service details:', err);
         toast.error('Failed to load service details');
@@ -205,6 +224,86 @@ export default function ServiceDetailPage() {
       return;
     }
     navigate('/app/billing/new', { state: { service } });
+  };
+
+  // -------------------------------------------------------------------------
+  // Phase 3: Handle after-repair photo changes
+  // -------------------------------------------------------------------------
+  const handleAfterPhotoChange = async (updatedPhotos) => {
+    // Check if a photo was removed
+    const removedPhoto = afterPhotos.find(
+      (p) => !updatedPhotos.some((u) => u.url === p.url)
+    );
+
+    if (removedPhoto && !removedPhoto._isStaged && removedPhoto.path) {
+      // Uploaded photo removed — delete from Storage + Firestore
+      setSavingAfterPhotos(true);
+      try {
+        const updated = await removeServicePhoto(
+          garageId,
+          id,
+          'after',
+          removedPhoto,
+          vehicleImages
+        );
+        setVehicleImages(updated);
+        setAfterPhotos(updated.afterRepairPhotos || []);
+        toast.success('Photo removed');
+      } catch (err) {
+        console.error('Remove after photo error:', err);
+        toast.error('Failed to remove photo');
+      } finally {
+        setSavingAfterPhotos(false);
+      }
+      return;
+    }
+
+    if (removedPhoto?._isStaged && removedPhoto.url?.startsWith('blob:')) {
+      URL.revokeObjectURL(removedPhoto.url);
+    }
+
+    setAfterPhotos(updatedPhotos);
+  };
+
+  /**
+   * Phase 3: Save all staged after-repair photos to Storage + Firestore.
+   * Called by the "Save After Photos" button.
+   */
+  const handleSaveAfterPhotos = async () => {
+    const staged = afterPhotos.filter((p) => p._isStaged && p._file);
+    if (!staged.length) {
+      toast('No new photos to save');
+      return;
+    }
+
+    setSavingAfterPhotos(true);
+    const toastId = toast.loading(`Uploading ${staged.length} photo(s)...`);
+    try {
+      const { uploadMultiplePhotos } = await import('@/services/photoService');
+      const results = await uploadMultiplePhotos({
+        garageId,
+        serviceId: id,
+        files: staged.map((p) => p._file),
+        type: 'after',
+      });
+
+      const updatedImages = await appendServicePhotos(
+        garageId,
+        id,
+        'after',
+        results,
+        vehicleImages
+      );
+
+      setVehicleImages(updatedImages);
+      setAfterPhotos(updatedImages.afterRepairPhotos || []);
+      toast.success(`${results.length} after-repair photo(s) saved!`, { id: toastId });
+    } catch (err) {
+      console.error('Save after photos error:', err);
+      toast.error('Failed to upload photos. Please try again.', { id: toastId });
+    } finally {
+      setSavingAfterPhotos(false);
+    }
   };
 
   // -------------------------------------------------------------------------
@@ -552,6 +651,111 @@ export default function ServiceDetailPage() {
             <span className="text-primary-800 text-lg">{formatCurrency(totalCost)}</span>
           </div>
         </div>
+      </div>
+
+      {/* =================================================
+           PHASE 3 — Vehicle Evidence Summary Card
+           ================================================= */}
+      {(() => {
+        const beforeCount = vehicleImages?.beforeRepairPhotos?.length || 0;
+        const afterCount = vehicleImages?.afterRepairPhotos?.length || 0;
+        const totalCount = beforeCount + afterCount;
+        if (totalCount === 0) return null;
+        return (
+          <div className="card space-y-3">
+            <div className="flex items-center gap-2 border-b border-surface-100 pb-3">
+              <Shield className="w-5 h-5 text-indigo-500" />
+              <h2 className="font-semibold text-gray-900">Vehicle Evidence</h2>
+              <span className="ml-auto text-xs font-semibold text-indigo-600 bg-indigo-50 border border-indigo-200 rounded-full px-2 py-0.5">
+                {totalCount} photo{totalCount !== 1 ? 's' : ''} total
+              </span>
+            </div>
+            <p className="text-xs text-gray-500">
+              Photographic evidence protecting both you and your customer from damage disputes.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-amber-50 border border-amber-200">
+                <Camera className="w-6 h-6 text-amber-500 mb-1" />
+                <span className="text-2xl font-bold text-amber-700">{beforeCount}</span>
+                <span className="text-xs font-semibold text-amber-600 mt-0.5">Before Repair</span>
+              </div>
+              <div className="flex flex-col items-center justify-center p-3 rounded-xl bg-green-50 border border-green-200">
+                <ImageIcon className="w-6 h-6 text-green-500 mb-1" />
+                <span className="text-2xl font-bold text-green-700">{afterCount}</span>
+                <span className="text-xs font-semibold text-green-600 mt-0.5">After Repair</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* =================================================
+           PHASE 3 — Photo Gallery (Before + After tabs)
+           ================================================= */}
+      {(vehicleImages?.beforeRepairPhotos?.length > 0 ||
+        vehicleImages?.afterRepairPhotos?.length > 0) && (
+        <div className="card space-y-4">
+          <div className="flex items-center gap-2 border-b border-surface-100 pb-3">
+            <Camera className="w-5 h-5 text-primary-500" />
+            <h2 className="font-semibold text-gray-900">Photo Gallery</h2>
+          </div>
+          <PhotoGallery
+            beforePhotos={vehicleImages?.beforeRepairPhotos || []}
+            afterPhotos={vehicleImages?.afterRepairPhotos || []}
+          />
+        </div>
+      )}
+
+      {/* =================================================
+           PHASE 3 — After Repair Photo Upload
+           ================================================= */}
+      <div className="card space-y-4">
+        <div className="flex items-center gap-2 border-b border-surface-100 pb-3">
+          <Camera className="w-5 h-5 text-green-500" />
+          <div>
+            <h2 className="font-semibold text-gray-900">After Repair Photos</h2>
+            <p className="text-xs text-gray-400 mt-0.5">Document completed work — upload after repairs are done</p>
+          </div>
+          {vehicleImages?.afterRepairPhotos?.length > 0 && (
+            <span className="ml-auto text-xs font-semibold text-green-600 bg-green-50 border border-green-200 rounded-full px-2 py-0.5">
+              {vehicleImages.afterRepairPhotos.length} saved
+            </span>
+          )}
+        </div>
+
+        <PhotoUploader
+          photos={afterPhotos}
+          onPhotosChange={handleAfterPhotoChange}
+          garageId={garageId}
+          serviceId={id}
+          type="after"
+          maxPhotos={10}
+          disabled={savingAfterPhotos}
+          uploadImmediately={false}
+        />
+
+        {/* Save button — only shown when there are staged (unsaved) photos */}
+        {afterPhotos.some((p) => p._isStaged) && (
+          <button
+            type="button"
+            id="btn-save-after-photos"
+            onClick={handleSaveAfterPhotos}
+            disabled={savingAfterPhotos}
+            className="btn-primary w-full py-3 flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 active:bg-green-800"
+          >
+            {savingAfterPhotos ? (
+              <>
+                <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                Uploading...
+              </>
+            ) : (
+              <>
+                <Camera className="w-4 h-4" />
+                Save {afterPhotos.filter((p) => p._isStaged).length} After-Repair Photo(s)
+              </>
+            )}
+          </button>
+        )}
       </div>
 
       {/* =====================================================

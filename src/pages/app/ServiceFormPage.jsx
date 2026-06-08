@@ -19,6 +19,7 @@ import {
   FileText,
   IndianRupee,
   AlertCircle,
+  Camera,
 } from 'lucide-react';
 
 import { useAuthStore } from '@/stores/authStore';
@@ -27,6 +28,13 @@ import { getService } from '@/services/serviceService';
 import { getCustomer, searchCustomers } from '@/services/customerService';
 import { SERVICE_TYPE_LABELS } from '@/config/constants';
 import { validateRequired, validatePositiveNumber } from '@/utils/validators';
+import {
+  uploadMultiplePhotos,
+  appendServicePhotos,
+  removeServicePhoto,
+  buildDefaultVehicleImages,
+} from '@/services/photoService';
+import PhotoUploader from '@/components/common/PhotoUploader';
 
 export default function ServiceFormPage() {
   const navigate = useNavigate();
@@ -68,6 +76,12 @@ export default function ServiceFormPage() {
 
   // Validation errors
   const [errors, setErrors] = useState({});
+
+  // Phase 3: before-repair photos
+  // Each entry is either a staged object ({ _isStaged, _file, url, ... })
+  // or an already-uploaded object ({ url, path, uploadedAt })
+  const [beforePhotos, setBeforePhotos] = useState([]);
+  const [vehicleImagesRef, setVehicleImagesRef] = useState(null);
 
   // Debouncing timeout reference for customer search
   const searchTimeoutRef = useRef(null);
@@ -156,6 +170,11 @@ export default function ServiceFormPage() {
             }
           }
         }
+
+        // Phase 3: load existing before-repair photos
+        const existingImages = serviceData.vehicleImages || buildDefaultVehicleImages();
+        setVehicleImagesRef(existingImages);
+        setBeforePhotos(existingImages.beforeRepairPhotos || []);
       } catch (err) {
         console.error('Error fetching service:', err);
         toast.error('Failed to load service details');
@@ -275,6 +294,10 @@ export default function ServiceFormPage() {
       const vehicleIndex = parseInt(selectedVehicleIndex, 10);
       const vehicle = vehiclesList[vehicleIndex];
 
+      // Separate staged (not yet uploaded) photos from already-uploaded ones
+      const stagedPhotos = beforePhotos.filter((p) => p._isStaged && p._file);
+      const alreadyUploaded = beforePhotos.filter((p) => !p._isStaged);
+
       const serviceData = {
         customerId: selectedCustomer.id,
         customerName: selectedCustomer.name,
@@ -295,10 +318,61 @@ export default function ServiceFormPage() {
 
       if (isEditing) {
         await updateService(garageId, id, serviceData);
+
+        // Phase 3 (edit mode): upload any newly staged before-repair photos
+        if (stagedPhotos.length > 0) {
+          toast.loading('Uploading photos...', { id: 'photo-upload' });
+          const uploadedResults = await uploadMultiplePhotos({
+            garageId,
+            serviceId: id,
+            files: stagedPhotos.map((p) => p._file),
+            type: 'before',
+          });
+          await appendServicePhotos(
+            garageId,
+            id,
+            'before',
+            uploadedResults,
+            vehicleImagesRef || buildDefaultVehicleImages()
+          );
+          toast.dismiss('photo-upload');
+        }
+
         toast.success('Service record updated!');
         navigate(`/app/services/${id}`);
       } else {
+        // Phase 3 (create mode): Two-phase commit
+        // 1. Create the service document to get the serviceId
         const newId = await createService(garageId, serviceData);
+
+        // 2. Upload staged photos now that we have the serviceId
+        if (stagedPhotos.length > 0) {
+          toast.loading('Uploading photos...', { id: 'photo-upload' });
+          try {
+            const uploadedResults = await uploadMultiplePhotos({
+              garageId,
+              serviceId: newId,
+              files: stagedPhotos.map((p) => p._file),
+              type: 'before',
+            });
+            await appendServicePhotos(
+              garageId,
+              newId,
+              'before',
+              uploadedResults,
+              {
+                ...buildDefaultVehicleImages(),
+                beforeRepairPhotos: alreadyUploaded,
+              }
+            );
+            toast.dismiss('photo-upload');
+          } catch (photoErr) {
+            toast.dismiss('photo-upload');
+            console.error('Photo upload failed (service created):', photoErr);
+            toast.error('Service created but some photos failed to upload. You can retry from the service detail page.');
+          }
+        }
+
         toast.success('Service record created!');
         navigate(`/app/services/${newId}`);
       }
@@ -308,6 +382,43 @@ export default function ServiceFormPage() {
     } finally {
       setLoading(false);
     }
+  };
+
+  /**
+   * Phase 3: Handle before-photo removal.
+   * Staged photos are removed from local state only.
+   * Uploaded photos are deleted from Storage + Firestore.
+   */
+  const handleBeforePhotoRemove = async (updatedPhotos) => {
+    // Find which photo was removed by comparing with current state
+    const removedPhoto = beforePhotos.find(
+      (p) => !updatedPhotos.some((u) => u.url === p.url)
+    );
+
+    if (removedPhoto && !removedPhoto._isStaged && removedPhoto.path && isEditing) {
+      try {
+        await removeServicePhoto(
+          garageId,
+          id,
+          'before',
+          removedPhoto,
+          vehicleImagesRef || buildDefaultVehicleImages()
+        );
+        // Update local vehicleImagesRef to reflect removal
+        setVehicleImagesRef((prev) => ({
+          ...(prev || buildDefaultVehicleImages()),
+          beforeRepairPhotos: updatedPhotos.filter((p) => !p._isStaged),
+        }));
+      } catch (err) {
+        console.error('Failed to remove photo:', err);
+        toast.error('Failed to remove photo. Please try again.');
+        return; // Don't update local state if storage delete failed
+      }
+    } else if (removedPhoto?._isStaged && removedPhoto.url?.startsWith('blob:')) {
+      URL.revokeObjectURL(removedPhoto.url);
+    }
+
+    setBeforePhotos(updatedPhotos);
   };
 
   if (fetchingData) {
@@ -659,6 +770,45 @@ export default function ServiceFormPage() {
               <option value="completed">Completed</option>
               <option value="delivered">Delivered</option>
             </select>
+          </div>
+        </div>
+
+        {/* Card 4: Vehicle Condition Photos — Phase 3 */}
+        <div className="card space-y-4">
+          <div className="flex items-center gap-2 border-b border-surface-100 pb-3">
+            <Camera className="w-5 h-5 text-primary-500" />
+            <div>
+              <h2 className="font-semibold text-gray-900">Vehicle Condition Photos</h2>
+              <p className="text-xs text-gray-400 mt-0.5">Before repair — capture vehicle condition as evidence</p>
+            </div>
+            {beforePhotos.filter((p) => !p._isStaged).length > 0 && (
+              <span className="ml-auto text-xs font-semibold text-primary-600 bg-primary-50 border border-primary-200 rounded-full px-2 py-0.5">
+                {beforePhotos.filter((p) => !p._isStaged).length} uploaded
+              </span>
+            )}
+            {beforePhotos.filter((p) => p._isStaged).length > 0 && (
+              <span className="ml-auto text-xs font-semibold text-amber-600 bg-amber-50 border border-amber-200 rounded-full px-2 py-0.5">
+                {beforePhotos.filter((p) => p._isStaged).length} staged
+              </span>
+            )}
+          </div>
+
+          <PhotoUploader
+            photos={beforePhotos}
+            onPhotosChange={handleBeforePhotoRemove}
+            garageId={garageId}
+            serviceId={isEditing ? id : null}
+            type="before"
+            maxPhotos={10}
+            disabled={loading}
+            uploadImmediately={false}
+          />
+
+          <div className="flex items-start gap-2 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+            <AlertCircle className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
+            <p className="text-xs text-blue-700 leading-relaxed">
+              <strong>Evidence Protection:</strong> These photos serve as proof of the vehicle's condition before repair. They cannot be edited after upload. Max 10 photos · JPG, PNG, WebP · 5 MB each.
+            </p>
           </div>
         </div>
 

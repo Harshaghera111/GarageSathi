@@ -25,6 +25,19 @@ import { db } from '@/config/firebase';
 import { COLLECTIONS, DEFAULTS } from '@/config/constants';
 
 /**
+ * Build the default vehicleImages structure.
+ * Phase 3: Inlined here to avoid cross-service dependency.
+ * Mirrors the same structure in photoService.buildDefaultVehicleImages.
+ */
+function buildDefaultVehicleImages() {
+  return {
+    beforeRepairPhotos: [],
+    afterRepairPhotos: [],
+    aiProcessingStatus: null, // Reserved for future AI: number plate OCR, damage detection
+  };
+}
+
+/**
  * Get the services collection reference for a garage.
  */
 function getServicesRef(garageId) {
@@ -45,6 +58,8 @@ export async function createService(garageId, serviceData) {
     paymentStatus: 'pending',
     // Phase 2: default approval status for all new services
     approvalStatus: serviceData.approvalStatus || 'not_required',
+    // Phase 3: vehicleImages structure — prepared for future AI integration
+    vehicleImages: serviceData.vehicleImages || buildDefaultVehicleImages(),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -85,6 +100,21 @@ export async function updateService(garageId, serviceId, updates) {
   const ref = doc(db, COLLECTIONS.GARAGES, garageId, COLLECTIONS.SERVICES, serviceId);
   await updateDoc(ref, {
     ...updates,
+    updatedAt: serverTimestamp(),
+  });
+}
+
+/**
+ * Update only the vehicleImages field (before/after photo arrays).
+ * Phase 3: Called by photoService helpers after upload/delete.
+ * @param {string} garageId
+ * @param {string} serviceId
+ * @param {object} vehicleImages - Full vehicleImages object
+ */
+export async function updateServicePhotos(garageId, serviceId, vehicleImages) {
+  const ref = doc(db, COLLECTIONS.GARAGES, garageId, COLLECTIONS.SERVICES, serviceId);
+  await updateDoc(ref, {
+    vehicleImages,
     updatedAt: serverTimestamp(),
   });
 }

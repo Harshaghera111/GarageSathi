@@ -3,6 +3,7 @@
  *
  * Uses Firebase v9+ modular SDK for tree-shaking.
  * Includes Firestore offline persistence for slow/no internet areas.
+ * Phase 3: Firebase Storage added for vehicle photo management.
  *
  * SETUP:
  * 1. Go to https://console.firebase.google.com
@@ -11,6 +12,7 @@
  * 4. Copy the config values to your .env file
  * 5. Enable Authentication (Email/Password)
  * 6. Create a Firestore database
+ * 7. Enable Firebase Storage
  */
 
 import { initializeApp } from 'firebase/app';
@@ -20,6 +22,7 @@ import {
   persistentLocalCache,
   persistentMultipleTabManager,
 } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage';
 
 // Firebase config from environment variables
 const firebaseConfig = {
@@ -50,5 +53,12 @@ export const db = initializeFirestore(app, {
     tabManager: persistentMultipleTabManager(),
   }),
 });
+
+/**
+ * Firebase Storage instance.
+ * Phase 3: Used for vehicle condition photo uploads.
+ * Storage bucket is configured via VITE_FIREBASE_STORAGE_BUCKET in .env
+ */
+export const storage = getStorage(app);
 
 export default app;

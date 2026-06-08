@@ -1,0 +1,78 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // ====================================
+    // Helper Functions
+    // ====================================
+
+    // Check user is authenticated
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    // Get the requesting user's Firestore profile.
+    // Uses firestore.get() to cross-reference the users collection.
+    function getUserData() {
+      return firestore.get(
+        /databases/(default)/documents/users/$(request.auth.uid)
+      ).data;
+    }
+
+    // Check user belongs to a specific garage.
+    // This enforces complete cross-garage isolation:
+    // a user from garageA CANNOT read or write garageB photos.
+    function belongsToGarage(garageId) {
+      return isAuthenticated() && getUserData().garageId == garageId;
+    }
+
+    // Check user is the owner of the garage (can delete photos).
+    function isGarageOwner(garageId) {
+      return isAuthenticated()
+        && getUserData().garageId == garageId
+        && getUserData().role == 'garage_owner';
+    }
+
+    // ====================================
+    // Vehicle Photos — Phase 3
+    //
+    // Storage path: garages/{garageId}/services/{serviceId}/{type}/{filename}
+    // where {type} is "before" or "after"
+    //
+    // Security model:
+    //  - Read:   Any authenticated garage member can view their own garage's photos
+    //  - Write:  Any authenticated garage member can upload (mechanics too)
+    //  - Delete: Only garage owners can delete (evidence protection)
+    //
+    // Cross-garage access: IMPOSSIBLE
+    // The belongsToGarage() check ensures garageId from the path
+    // matches the garageId in the user's Firestore profile.
+    // ====================================
+    match /garages/{garageId}/services/{serviceId}/{type}/{filename} {
+      // Any garage member can read (view) their own garage's photos
+      allow read: if belongsToGarage(garageId);
+
+      // Any garage member can upload photos (mechanics included)
+      allow create: if belongsToGarage(garageId)
+        // Validate file type: JPG, PNG, WebP only
+        && request.resource.contentType.matches('image/(jpeg|jpg|png|webp)')
+        // Validate max file size: 5 MB
+        && request.resource.size <= 5 * 1024 * 1024;
+
+      // Only garage owners can delete photos (evidence protection)
+      allow delete: if isGarageOwner(garageId);
+
+      // Disallow update — photos are immutable once uploaded.
+      // To "replace" a photo, delete + re-upload.
+      allow update: if false;
+    }
+
+    // ====================================
+    // Deny all other paths by default
+    // Any path not explicitly matched above is denied.
+    // ====================================
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}
